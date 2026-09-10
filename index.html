@@ -68,7 +68,7 @@
             background-color: #f7f5f2;
         }
 
-        /* Pantalla de Cámara (Oculta al inicio) */
+        /* Pantalla de Cámara */
         #pantalla-camara {
             position: absolute;
             top: 0;
@@ -76,36 +76,54 @@
             width: 100%;
             height: 100%;
             display: none;
+            background: #000;
         }
-        #video {
-            position: absolute;
-            top: 0;
-            left: 0;
+        
+        .camera-container {
+            position: relative;
             width: 100%;
             height: 100%;
+            overflow: hidden;
+        }
+
+        #video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 100%;
+            min-height: 100%;
+            width: auto;
+            height: auto;
             object-fit: cover;
             z-index: 1;
         }
+
+        /* Si es cámara frontal, aplicamos un efecto espejo opcional para que sea natural al verse */
+        #video.modo-selfie {
+            transform: translate(-50%, -50%) scaleX(-1);
+        }
+
         #marco-overlay {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: fill;
             z-index: 2;
-            pointer-events: none; /* Crucial para que los toques pasen a través del marco */
+            pointer-events: none;
         }
         
-        /* Controles inferiores (Botón de foto y regresar) */
+        /* Controles inferiores */
         .controles {
             position: absolute;
             bottom: 30px;
             width: 100%;
             display: flex;
-            justify-content: center;
+            justify-content: space-around;
             align-items: center;
-            gap: 30px;
+            padding: 0 20px;
             z-index: 10;
         }
         #btnCapturar {
@@ -122,25 +140,25 @@
         #btnCapturar:active {
             transform: scale(0.9);
         }
-        .btn-volver {
-            background: rgba(0, 0, 0, 0.5);
+        .btn-control-secundario {
+            background: rgba(0, 0, 0, 0.6);
             color: white;
             border: none;
-            padding: 10px 15px;
+            padding: 10px 14px;
             border-radius: 20px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             cursor: pointer;
+            backdrop-filter: blur(5px);
         }
 
         #canvas { display: none; }
         
-        /* Mensaje de carga de cámara */
         #mensaje-camara {
             position: absolute;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.7);
             color: white;
             padding: 8px 15px;
             border-radius: 20px;
@@ -152,30 +170,31 @@
 </head>
 <body>
 
-    <!-- MENÚ INICIAL: Elige tu marco -->
+    <!-- MENÚ INICIAL -->
     <div id="menu-selector">
         <h1>Boda Lupita & Ale</h1>
         <p>11 de Septiembre de 2026</p>
         <p style="font-size: 0.85rem; margin-top: -15px;">Elige tu marco favorito para la foto:</p>
         
         <div class="opciones-marcos">
-            <!-- AQUÍ PUEDES AGREGAR TUS DIFERENTES MARCOS -->
             <button class="btn-marco" onclick="iniciarExperiencia('marco-boda.png')">🌸 Marco Elegante Boda</button>
             <button class="btn-marco" onclick="iniciarExperiencia('marco-divertido.png')">🎉 Marco Divertido / Fiesta</button>
-            <!-- Si agregas más marcos en el futuro, solo copia una línea de estas cambiando el nombre del archivo PNG -->
         </div>
     </div>
 
-    <!-- PANTALLA DE CÁMARA Y FOTOMATÓN -->
+    <!-- PANTALLA DE CÁMARA -->
     <div id="pantalla-camara">
-        <div id="mensaje-camara">Preparando cámara...</div>
-        <video id="video" autoplay playsinline muted></video>
-        <img id="marco-overlay" src="" alt="Marco seleccionado">
+        <div id="mensaje-camara">Activando cámara...</div>
+        
+        <div class="camera-container">
+            <video id="video" autoplay playsinline muted></video>
+            <img id="marco-overlay" src="" alt="Marco seleccionado">
+        </div>
         
         <div class="controles">
-            <button class="btn-volver" onclick="regresarAlMenu()">← Cambiar marco</button>
+            <button class="btn-control-secundario" onclick="regresarAlMenu()">← Menú</button>
             <button id="btnCapturar" aria-label="Tomar foto"></button>
-            <div style="width: 80px;"></div> <!-- Espaciador para centrar el botón de foto -->
+            <button class="btn-control-secundario" onclick="voltearCamara()">🔄 Voltear</button>
         </div>
         
         <canvas id="canvas"></canvas>
@@ -188,39 +207,65 @@
         const marcoOverlay = document.getElementById('marco-overlay');
         const canvas = document.getElementById('canvas');
         const mensajeCamara = document.getElementById('mensaje-camara');
+        
         let currentStream = null;
+        let usarCamaraTrasera = true; // Por defecto inicia en la trasera, pero se puede alternar
+        let marcoActual = '';
 
         async function iniciarExperiencia(nombreArchivoMarco) {
-            // 1. Cambiar la imagen del marco según lo que eligieron
-            marcoOverlay.src = nombreArchivoMarco;
+            marcoActual = nombreArchivoMarco;
+            marcoOverlay.src = marcoActual;
 
-            // 2. Ocultar menú y mostrar pantalla de cámara
             menuSelector.style.display = 'none';
             pantallaCamara.style.display = 'block';
+            
+            await cargarCamara();
+        }
+
+        async function cargarCamara() {
             mensajeCamara.style.display = 'block';
-            mensajeCamara.innerText = "Activando cámara...";
+            mensajeCamara.innerText = "Cambiando cámara...";
+
+            // Apagar stream anterior si existe
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
 
             try {
+                const facing = usarCamaraTrasera ? 'environment' : 'user';
                 const constraints = {
                     video: {
-                        facingMode: { ideal: 'user' }, // 'user' para cámara frontal (selfies), cámbialo a 'environment' si prefieres la trasera
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        facingMode: { ideal: facing },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 };
+                
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
+
+                // Aplicar efecto espejo solo si es la cámara frontal (selfie)
+                if (!usarCamaraTrasera) {
+                    video.classList.add('modo-selfie');
+                } else {
+                    video.classList.remove('modo-selfie');
+                }
+
                 mensajeCamara.style.display = 'none';
             } catch (error) {
-                console.error("Error al acceder a la cámara:", error);
+                console.error("Error al cambiar de cámara:", error);
                 mensajeCamara.style.display = 'block';
-                mensajeCamara.innerHTML = "⚠️ No se pudo acceder a la cámara. Revisa los permisos de tu navegador.";
+                mensajeCamara.innerHTML = "⚠️ No se pudo cambiar la cámara.";
             }
         }
 
+        function voltearCamara() {
+            usarCamaraTrasera = !usarCamaraTrasera; // Alternar entre verdadero y falso
+            cargarCamara();
+        }
+
         function regresarAlMenu() {
-            // Apagar la cámara para liberar recursos del celular
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
                 currentStream = null;
@@ -230,28 +275,40 @@
             menuSelector.style.display = 'flex';
         }
 
-        // Tomar la foto uniendo la cámara y el marco PNG seleccionado
+        // Tomar la foto respetando si está en modo selfie o trasera
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
-            canvas.width = video.videoWidth || 1280;
-            canvas.height = video.videoHeight || 720;
+            canvas.width = video.videoWidth || 1920;
+            canvas.height = video.videoHeight || 1080;
             const ctx = canvas.getContext('2d');
 
-            // 1. Dibuja el video de la cámara
+            ctx.save();
+            // Si tomaron selfie, voltear horizontalmente la imagen para que coincida con lo que veían en pantalla
+            if (!usarCamaraTrasera) {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore(); // Restaurar el contexto normal para dibujar el marco derecho
 
-            // 2. Dibuja el marco PNG transparente encima
-            ctx.drawImage(marcoOverlay, 0, 0, canvas.width, canvas.height);
-
-            // 3. Genera la descarga automática de la imagen resultante en el celular
-            const dataURL = canvas.toDataURL('image/jpeg', 0.92);
-            const link = document.createElement('a');
-            link.href = dataURL;
-            link.download = 'recuerdo-boda-lupita-ale.jpg';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Dibujar el marco PNG encima
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Generar descarga de la foto lista
+                const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+                const link = document.createElement('a');
+                link.href = dataURL;
+                link.download = 'recuerdo-boda-lupita-ale.jpg';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+            img.src = marcoOverlay.src;
         });
     </script>
 </body>
