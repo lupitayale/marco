@@ -93,19 +93,20 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Llena toda la pantalla para que no queden huecos negros en la cámara */
+            object-fit: cover; /* Llena toda la pantalla con la cámara */
             z-index: 1;
         }
 
         #video.modo-selfie {
-            transform: scaleX(-1); /* Efecto espejo natural para selfies */
+            transform: scaleX(-1);
         }
 
+        /* AJUSTE CLAVE: Usamos 'object-fit: contain' para que el marco NUNCA se deforme ni se estire de más */
         #marco-overlay {
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: contain; /* Mantiene las proporciones exactas del marco sin deformarlo jamás */
+            object-fit: contain; 
             z-index: 2;
             pointer-events: none;
         }
@@ -215,7 +216,7 @@
 
         async function cargarCamara() {
             mensajeCamara.style.display = 'block';
-            mensajeCamara.innerText = "Abriendo cámara amplia...";
+            mensajeCamara.innerText = "Activando cámara...";
 
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -223,13 +224,11 @@
 
             try {
                 const facing = usarCamaraTrasera ? 'environment' : 'user';
-                
-                // Pedimos resoluciones altas que fuercen el mejor ángulo y apertura posibles en el sensor
                 const constraints = {
                     video: {
                         facingMode: { ideal: facing },
-                        width: { ideal: 3840 },  // Intentar pedir 4K o la máxima resolución del lente
-                        height: { ideal: 2160 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 };
@@ -243,10 +242,9 @@
                     video.classList.remove('modo-selfie');
                 }
 
-                    mensajeCamara.style.display = 'none';
+                mensajeCamara.style.display = 'none';
             } catch (error) {
                 console.error("Error al abrir la cámara:", error);
-                // Plan de respaldo con resolución estándar si el teléfono no soporta 4K
                 try {
                     const fallback = {
                         video: { facingMode: usarCamaraTrasera ? 'environment' : 'user' },
@@ -257,7 +255,7 @@
                     mensajeCamara.style.display = 'none';
                 } catch (err2) {
                     mensajeCamara.style.display = 'block';
-                    mensajeCamara.innerHTML = "⚠️ No se pudo acceder a la cámara. Revisa permisos.";
+                    mensajeCamara.innerHTML = "⚠️ No se pudo acceder a la cámara.";
                 }
             }
         }
@@ -277,7 +275,7 @@
             menuSelector.style.display = 'flex';
         }
 
-        // Captura sincronizada respetando el cuadro del marco y el video
+        // Al capturar, unimos el video con el marco respetando proporciones exactas
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
@@ -297,7 +295,6 @@
             const img = new Image();
             img.crossOrigin = "anonymous";
             img.onload = function() {
-                // Dibuja el marco adaptado proporcionalmente a la resolución del canvas
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
                 const dataURL = canvas.toDataURL('image/jpeg', 0.95);
