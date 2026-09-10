@@ -89,7 +89,6 @@
             align-items: center;
         }
 
-        /* Usamos 'contain' en el video o ajustamos para evitar el efecto de "lupa" */
         #video {
             position: absolute;
             width: 100%;
@@ -206,7 +205,7 @@
 
     <!-- PANTALLA DE CÁMARA -->
     <div id="pantalla-camara">
-        <div id="mensaje-camara">Activando cámara amplia...</div>
+        <div id="mensaje-camara">Activando cámara HD...</div>
         
         <div class="controles-zoom">
             <button class="btn-zoom" onclick="cambiarZoom(0.2)">+</button>
@@ -250,7 +249,7 @@
 
         async function cargarCamara() {
             mensajeCamara.style.display = 'block';
-            mensajeCamara.innerText = "Abriendo gran angular...";
+            mensajeCamara.innerText = "Configurando alta definición...";
 
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -259,14 +258,12 @@
             try {
                 const facing = usarCamaraTrasera ? 'environment' : 'user';
                 
-                // Pedimos configuraciones que fuercen el campo de visión más amplio posible
+                // Solicitamos resolución Full HD real para exprimir la nitidez del sensor
                 const constraints = {
                     video: {
                         facingMode: { ideal: facing },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        // Intentar solicitar el lente ultra ancho o menor distancia focal si el sistema lo expone
-                        aspectRatio: { ideal: 9/16 } 
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 };
@@ -280,12 +277,11 @@
                 if (capabilities.zoom) {
                     zoomMin = capabilities.zoom.min;
                     zoomMax = capabilities.zoom.max;
-                    zoomActual = zoomMin; // Forzar el zoom al mínimo (lo más alejado / amplio posible)
-                    
+                    zoomActual = zoomMin;
                     try {
                         await track.applyConstraints({ advanced: [{ zoom: zoomMin }] });
                     } catch (e) {
-                        console.log("No se pudo fijar el zoom mínimo por hardware:", e);
+                        console.log("Zoom por defecto no soportado", e);
                     }
                 }
 
@@ -343,12 +339,21 @@
             menuSelector.style.display = 'flex';
         }
 
+        // Captura HD con procesamiento de imagen mejorado
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
-            canvas.width = video.videoWidth || 1280;
-            canvas.height = video.videoHeight || 720;
+            // Forzar alta resolución real basada en las capacidades de video del sensor
+            const videoTrack = currentStream.getVideoTracks()[0];
+            const settings = videoTrack.getSettings();
+
+            canvas.width = settings.width || 1920;
+            canvas.height = settings.height || 1080;
             const ctx = canvas.getContext('2d');
+
+            // Suavizado de alta calidad para que los pixeles no se vean "feos" o barridos
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
 
             ctx.save();
             if (!usarCamaraTrasera) {
@@ -356,18 +361,21 @@
                 ctx.scale(-1, 1);
             }
 
+            // Dibujar la foto de la cámara con máxima definición
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             ctx.restore();
 
+            // Dibujar el marco PNG encima a resolución completa
             const img = new Image();
             img.crossOrigin = "anonymous";
             img.onload = function() {
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
-                const dataURL = canvas.toDataURL('image/jpeg', 0.95);
+                // Exportar a la máxima calidad de JPG (1.0 = 100% sin pérdida visual)
+                const dataURL = canvas.toDataURL('image/jpeg', 1.0);
                 const link = document.createElement('a');
                 link.href = dataURL;
-                link.download = 'boda-lupita-ale.jpg';
+                link.download = 'boda-lupita-ale-recuerdo.jpg';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
