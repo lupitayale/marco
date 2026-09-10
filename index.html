@@ -93,7 +93,7 @@
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Llena toda la pantalla con la cámara */
+            object-fit: cover;
             z-index: 1;
         }
 
@@ -101,12 +101,12 @@
             transform: scaleX(-1);
         }
 
-        /* AJUSTE CLAVE: Usamos 'object-fit: contain' para que el marco NUNCA se deforme ni se estire de más */
+        /* Forzamos a que el marco cubra el 100% de la pantalla del celular sin dejar huecos */
         #marco-overlay {
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: contain; 
+            object-fit: fill; 
             z-index: 2;
             pointer-events: none;
         }
@@ -275,7 +275,7 @@
             menuSelector.style.display = 'flex';
         }
 
-        // Al capturar, unimos el video con el marco respetando proporciones exactas
+        // Al capturar, escala y unifica la foto final a tamaño completo
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
