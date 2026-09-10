@@ -94,19 +94,20 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            z-index: 1;
+            z-index: 1; /* La cámara está al fondo */
         }
 
         #video.modo-selfie {
             transform: scaleX(-1);
         }
 
-        #marco-overlay {
+        /* Canvas oculto que procesa el marco verde y lo vuelve transparente en tiempo real */
+        #marco-canvas-preview {
             position: absolute;
             width: 100%;
             height: 100%;
-            object-fit: fill; 
-            z-index: 2;
+            object-fit: fill;
+            z-index: 2; /* El marco procesado va encima de la cámara */
             pointer-events: none;
         }
         
@@ -172,7 +173,7 @@
             backdrop-filter: blur(5px);
         }
 
-        #canvas { display: none; }
+        #canvas-captura { display: none; }
         
         #mensaje-camara {
             position: absolute;
@@ -214,7 +215,8 @@
 
         <div class="camera-container">
             <video id="video" autoplay playsinline muted></video>
-            <img id="marco-overlay" src="" alt="Marco seleccionado">
+            <!-- Canvas en tiempo real que quita el verde y muestra la cámara por detrás -->
+            <canvas id="marco-canvas-preview"></canvas>
         </div>
         
         <div class="controles">
@@ -223,15 +225,16 @@
             <button class="btn-control-secundario" onclick="voltearCamara()">🔄 Voltear</button>
         </div>
         
-        <canvas id="canvas"></canvas>
+        <canvas id="canvas-captura"></canvas>
     </div>
 
     <script>
         const menuSelector = document.getElementById('menu-selector');
         const pantallaCamara = document.getElementById('pantalla-camara');
         const video = document.getElementById('video');
-        const marcoOverlay = document.getElementById('marco-overlay');
-        const canvas = document.getElementById('canvas');
+        const previewCanvas = document.getElementById('marco-canvas-preview');
+        const previewCtx = previewCanvas.getContext('2d', {willReadFrequently: true});
+        const capturaCanvas = document.getElementById('canvas-captura');
         const mensajeCamara = document.getElementById('mensaje-camara');
         
         let currentStream = null;
@@ -239,26 +242,29 @@
         let zoomActual = 1;
         let zoomMin = 1;
         let zoomMax = 1;
+        let imagenMarcoGlobal = new Image();
 
         async function iniciarExperiencia(nombreArchivoMarco) {
-            marcoOverlay.src = nombreArchivoMarco;
             menuSelector.style.display = 'none';
             pantallaCamara.style.display = 'block';
-            await cargarCamara();
+            mensajeCamara.style.display = 'block';
+            mensajeCamara.innerText = "Cargando marco y cámara...";
+
+            // Cargar la imagen del marco y procesarla para quitar el verde brillante
+            imagenMarcoGlobal.crossOrigin = "anonymous";
+            imagenMarcoGlobal.onload = async function() {
+                await cargarCamara();
+            };
+            imagenMarcoGlobal.src = nombreArchivoMarco;
         }
 
         async function cargarCamara() {
-            mensajeCamara.style.display = 'block';
-            mensajeCamara.innerText = "Configurando alta definición...";
-
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
             }
 
             try {
                 const facing = usarCamaraTrasera ? 'environment' : 'user';
-                
-                // Solicitamos resolución Full HD real para exprimir la nitidez del sensor
                 const constraints = {
                     video: {
                         facingMode: { ideal: facing },
@@ -280,9 +286,7 @@
                     zoomActual = zoomMin;
                     try {
                         await track.applyConstraints({ advanced: [{ zoom: zoomMin }] });
-                    } catch (e) {
-                        console.log("Zoom por defecto no soportado", e);
-                    }
+                    } catch (e) {}
                 }
 
                 if (!usarCamaraTrasera) {
@@ -292,21 +296,50 @@
                 }
 
                 mensajeCamara.style.display = 'none';
+                
+                // Ajustar tamaños y empezar a renderizar el marco sin fondo verde
+                AjustarYRenderizarMarco();
+
             } catch (error) {
-                console.error("Error al abrir la cámara:", error);
+                console.error("Error al abrir cámara:", error);
                 try {
-                    const fallback = {
-                        video: { facingMode: usarCamaraTrasera ? 'environment' : 'user' },
-                        audio: false
-                    };
+                    const fallback = { video: { facingMode: usarCamaraTrasera ? 'environment' : 'user' }, audio: false };
                     currentStream = await navigator.mediaDevices.getUserMedia(fallback);
                     video.srcObject = currentStream;
                     mensajeCamara.style.display = 'none';
+                    AjustarYRenderizarMarco();
                 } catch (err2) {
                     mensajeCamara.style.display = 'block';
                     mensajeCamara.innerHTML = "⚠️ No se pudo acceder a la cámara.";
                 }
             }
+        }
+
+        // Función clave que detecta el color verde fosfo y lo vuelve transparente
+        function AjustarYRenderizarMarco() {
+            if (!imagenMarcoGlobal.src) return;
+
+            previewCanvas.width = video.videoWidth || 1080;
+            previewCanvas.height = video.videoHeight || 1920;
+
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            previewCtx.drawImage(imagenMarcoGlobal, 0, 0, previewCanvas.width, previewCanvas.height);
+
+            // Leer los pixeles para borrar el verde brillante del centro
+            const frame = previewCtx.getImageData(0, 0, previewCanvas.width, previewCanvas.height);
+            const l = frame.data.length;
+
+            for (let i = 0; i < l; i += 4) {
+                let r = frame.data[i];
+                let g = frame.data[i + 1];
+                let b = frame.data[i + 2];
+
+                // Detectar si el pixel es verde brillante (Verde alto, Rojo y Azul bajos)
+                if (g > 200 && r < 50 && b < 50) {
+                    frame.data[i + 3] = 0; // Poner opacidad a 0 (transparente)
+                }
+            }
+            previewCtx.putImageData(frame, 0, 0);
         }
 
         async function cambiarZoom(cantidad) {
@@ -318,9 +351,7 @@
                 zoomActual = Math.min(zoomMax, Math.max(zoomMin, zoomActual + cantidad));
                 try {
                     await track.applyConstraints({ advanced: [{ zoom: zoomActual }] });
-                } catch (err) {
-                    console.error("No se pudo aplicar el zoom:", err);
-                }
+                } catch (err) {}
             }
         }
 
@@ -339,48 +370,35 @@
             menuSelector.style.display = 'flex';
         }
 
-        // Captura HD con procesamiento de imagen mejorado
+        // Tomar la foto final uniendo video y el marco procesado sin verde
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
-            // Forzar alta resolución real basada en las capacidades de video del sensor
-            const videoTrack = currentStream.getVideoTracks()[0];
-            const settings = videoTrack.getSettings();
+            capturaCanvas.width = video.videoWidth || 1920;
+            capturaCanvas.height = video.videoHeight || 1080;
+            const ctx = capturaCanvas.getContext('2d');
 
-            canvas.width = settings.width || 1920;
-            canvas.height = settings.height || 1080;
-            const ctx = canvas.getContext('2d');
-
-            // Suavizado de alta calidad para que los pixeles no se vean "feos" o barridos
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
 
             ctx.save();
             if (!usarCamaraTrasera) {
-                ctx.translate(canvas.width, 0);
+                ctx.translate(capturaCanvas.width, 0);
                 ctx.scale(-1, 1);
             }
-
-            // Dibujar la foto de la cámara con máxima definición
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.drawImage(video, 0, 0, capturaCanvas.width, capturaCanvas.height);
             ctx.restore();
 
-            // Dibujar el marco PNG encima a resolución completa
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.onload = function() {
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                // Exportar a la máxima calidad de JPG (1.0 = 100% sin pérdida visual)
-                const dataURL = canvas.toDataURL('image/jpeg', 1.0);
-                const link = document.createElement('a');
-                link.href = dataURL;
-                link.download = 'boda-lupita-ale-recuerdo.jpg';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            };
-            img.src = marcoOverlay.src;
+            // Dibujar el marco procesado sin el cuadro verde encima
+            ctx.drawImage(previewCanvas, 0, 0, capturaCanvas.width, capturaCanvas.height);
+            
+            const dataURL = capturaCanvas.toDataURL('image/jpeg', 1.0);
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'boda-lupita-ale-recuerdo.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         });
     </script>
 </body>
