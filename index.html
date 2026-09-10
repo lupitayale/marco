@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fotomatón - Boda Lupita & Ale</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        /* Pantalla de Selección de Marcos (Menú Inicial) */
+        #menu-selector {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #f4efe9 0%, #e6dcd0 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+        #menu-selector h1 {
+            font-size: 1.8rem;
+            color: #5a4a42;
+            margin-bottom: 5px;
+        }
+        #menu-selector p {
+            color: #7c6b61;
+            margin-bottom: 25px;
+            font-size: 0.95rem;
+        }
+        .opciones-marcos {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 320px;
+        }
+        .btn-marco {
+            background-color: #fff;
+            border: 2px solid #d4c5b9;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            color: #5a4a42;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+        .btn-marco:active {
+            transform: scale(0.97);
+            background-color: #f7f5f2;
+        }
+
+        /* Pantalla de Cámara (Oculta al inicio) */
+        #pantalla-camara {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        #video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+        #marco-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 2;
+            pointer-events: none; /* Crucial para que los toques pasen a través del marco */
+        }
+        
+        /* Controles inferiores (Botón de foto y regresar) */
+        .controles {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 30px;
+            z-index: 10;
+        }
+        #btnCapturar {
+            width: 75px;
+            height: 75px;
+            background-color: #fff;
+            border: 5px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            transition: transform 0.1s ease;
+        }
+        #btnCapturar:active {
+            transform: scale(0.9);
+        }
+        .btn-volver {
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        #canvas { display: none; }
+        
+        /* Mensaje de carga de cámara */
+        #mensaje-camara {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            z-index: 20;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- MENÚ INICIAL: Elige tu marco -->
+    <div id="menu-selector">
+        <h1>Boda Lupita & Ale</h1>
+        <p>11 de Septiembre de 2026</p>
+        <p style="font-size: 0.85rem; margin-top: -15px;">Elige tu marco favorito para la foto:</p>
+        
+        <div class="opciones-marcos">
+            <!-- AQUÍ PUEDES AGREGAR TUS DIFERENTES MARCOS -->
+            <button class="btn-marco" onclick="iniciarExperiencia('marco-boda.png')">🌸 Marco Elegante Boda</button>
+            <button class="btn-marco" onclick="iniciarExperiencia('marco-divertido.png')">🎉 Marco Divertido / Fiesta</button>
+            <!-- Si agregas más marcos en el futuro, solo copia una línea de estas cambiando el nombre del archivo PNG -->
+        </div>
+    </div>
+
+    <!-- PANTALLA DE CÁMARA Y FOTOMATÓN -->
+    <div id="pantalla-camara">
+        <div id="mensaje-camara">Preparando cámara...</div>
+        <video id="video" autoplay playsinline muted></video>
+        <img id="marco-overlay" src="" alt="Marco seleccionado">
+        
+        <div class="controles">
+            <button class="btn-volver" onclick="regresarAlMenu()">← Cambiar marco</button>
+            <button id="btnCapturar" aria-label="Tomar foto"></button>
+            <div style="width: 80px;"></div> <!-- Espaciador para centrar el botón de foto -->
+        </div>
+        
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        const menuSelector = document.getElementById('menu-selector');
+        const pantallaCamara = document.getElementById('pantalla-camara');
+        const video = document.getElementById('video');
+        const marcoOverlay = document.getElementById('marco-overlay');
+        const canvas = document.getElementById('canvas');
+        const mensajeCamara = document.getElementById('mensaje-camara');
+        let currentStream = null;
+
+        async function iniciarExperiencia(nombreArchivoMarco) {
+            // 1. Cambiar la imagen del marco según lo que eligieron
+            marcoOverlay.src = nombreArchivoMarco;
+
+            // 2. Ocultar menú y mostrar pantalla de cámara
+            menuSelector.style.display = 'none';
+            pantallaCamara.style.display = 'block';
+            mensajeCamara.style.display = 'block';
+            mensajeCamara.innerText = "Activando cámara...";
+
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: { ideal: 'user' }, // 'user' para cámara frontal (selfies), cámbialo a 'environment' si prefieres la trasera
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                mensajeCamara.style.display = 'none';
+            } catch (error) {
+                console.error("Error al acceder a la cámara:", error);
+                mensajeCamara.style.display = 'block';
+                mensajeCamara.innerHTML = "⚠️ No se pudo acceder a la cámara. Revisa los permisos de tu navegador.";
+            }
+        }
+
+        function regresarAlMenu() {
+            // Apagar la cámara para liberar recursos del celular
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+            }
+            video.srcObject = null;
+            pantallaCamara.style.display = 'none';
+            menuSelector.style.display = 'flex';
+        }
+
+        // Tomar la foto uniendo la cámara y el marco PNG seleccionado
+        document.getElementById('btnCapturar').addEventListener('click', () => {
+            if (!video.srcObject) return;
+
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 720;
+            const ctx = canvas.getContext('2d');
+
+            // 1. Dibuja el video de la cámara
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 2. Dibuja el marco PNG transparente encima
+            ctx.drawImage(marcoOverlay, 0, 0, canvas.width, canvas.height);
+
+            // 3. Genera la descarga automática de la imagen resultante en el celular
+            const dataURL = canvas.toDataURL('image/jpeg', 0.92);
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'recuerdo-boda-lupita-ale.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+    </script>
+</body>
+</html>
