@@ -89,6 +89,7 @@
             align-items: center;
         }
 
+        /* Usamos 'contain' en el video o ajustamos para evitar el efecto de "lupa" */
         #video {
             position: absolute;
             width: 100%;
@@ -205,9 +206,8 @@
 
     <!-- PANTALLA DE CÁMARA -->
     <div id="pantalla-camara">
-        <div id="mensaje-camara">Activando cámara...</div>
+        <div id="mensaje-camara">Activando cámara amplia...</div>
         
-        <!-- Botones de Zoom en la esquina superior derecha -->
         <div class="controles-zoom">
             <button class="btn-zoom" onclick="cambiarZoom(0.2)">+</button>
             <button class="btn-zoom" onclick="cambiarZoom(-0.2)">-</button>
@@ -240,7 +240,6 @@
         let zoomActual = 1;
         let zoomMin = 1;
         let zoomMax = 1;
-        let zoomStep = 0.2;
 
         async function iniciarExperiencia(nombreArchivoMarco) {
             marcoOverlay.src = nombreArchivoMarco;
@@ -251,7 +250,7 @@
 
         async function cargarCamara() {
             mensajeCamara.style.display = 'block';
-            mensajeCamara.innerText = "Activando cámara...";
+            mensajeCamara.innerText = "Abriendo gran angular...";
 
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -259,11 +258,15 @@
 
             try {
                 const facing = usarCamaraTrasera ? 'environment' : 'user';
+                
+                // Pedimos configuraciones que fuercen el campo de visión más amplio posible
                 const constraints = {
                     video: {
                         facingMode: { ideal: facing },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        // Intentar solicitar el lente ultra ancho o menor distancia focal si el sistema lo expone
+                        aspectRatio: { ideal: 9/16 } 
                     },
                     audio: false
                 };
@@ -271,18 +274,19 @@
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
 
-                // Configurar capacidades de Zoom si el dispositivo las soporta
                 const track = currentStream.getVideoTracks()[0];
                 const capabilities = track.getCapabilities();
                 
                 if (capabilities.zoom) {
                     zoomMin = capabilities.zoom.min;
                     zoomMax = capabilities.zoom.max;
-                    zoomStep = capabilities.zoom.step || 0.2;
-                    zoomActual = track.getSettings().zoom || zoomMin;
-                } else {
-                    zoomMin = 1;
-                    zoomMax = 1;
+                    zoomActual = zoomMin; // Forzar el zoom al mínimo (lo más alejado / amplio posible)
+                    
+                    try {
+                        await track.applyConstraints({ advanced: [{ zoom: zoomMin }] });
+                    } catch (e) {
+                        console.log("No se pudo fijar el zoom mínimo por hardware:", e);
+                    }
                 }
 
                 if (!usarCamaraTrasera) {
@@ -326,7 +330,6 @@
 
         function voltearCamara() {
             usarCamaraTrasera = !usarCamaraTrasera;
-            zoomActual = 1; // Reiniciar zoom al cambiar de cámara
             cargarCamara();
         }
 
@@ -340,12 +343,11 @@
             menuSelector.style.display = 'flex';
         }
 
-        // Captura final integrada
         document.getElementById('btnCapturar').addEventListener('click', () => {
             if (!video.srcObject) return;
 
-            canvas.width = video.videoWidth || 1920;
-            canvas.height = video.videoHeight || 1080;
+            canvas.width = video.videoWidth || 1280;
+            canvas.height = video.videoHeight || 720;
             const ctx = canvas.getContext('2d');
 
             ctx.save();
